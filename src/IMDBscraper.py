@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.support.select import Select
 from webdriver_manager.chrome import ChromeDriverManager
+import time
 
 # Class to encapsulate the data for a movie
 class Movie:
@@ -57,10 +58,11 @@ class Movie:
 # about the Top 250 movies
 class IMDBScraper:
 
-    def __init__(self):
+    # Defines link of top250 movies and attributes to be set in each run
+    def __init__(self, url):
 
-        # The URL should always be the same
-        self.url = "https://www.imdb.com/chart/top/?ref_=nv_mv_250"
+        # The URL should always be the same "https://www.imdb.com/chart/top/?ref_=nv_mv_250"
+        self.url = url
 
         # Empty dataframe to fill in each run
         self.data = None
@@ -71,10 +73,10 @@ class IMDBScraper:
 
     # Given a link, this function returns the corresponding Movie object
     @staticmethod
-    def _getMovieFromLink(link):
+    def _getMovieFromLink(driver, link):
 
         r = requests.get(link)
-        if r.status_code != 200:
+        if r.status_code != 200: # Check that the page is accessible
             exit(-1)
         soup = BeautifulSoup(r.content, "html.parser")
 
@@ -165,27 +167,33 @@ class IMDBScraper:
         else:
             gross = '#N/A'
 
-        badReviews, neutralReviews, goodReviews = IMDBScraper._getMovieReviews(link + "reviews")
+        # The part of the scraping in charge of the reviews is done in other function using Selenium
+        badReviews, neutralReviews, goodReviews = IMDBScraper._getMovieReviews(driver, link + "reviews")
 
+        time.sleep(5) # Spacing a bit between two movies
+
+        # Returns the Movie object with all attributes as scraped
         return Movie(name, score, genre1, genre2, genre3, duration, release, rating,
                      country, language, sound, color, ratio, budget, gross, badReviews, neutralReviews, goodReviews)
 
+    # This function returns 3 integers with the number of reviews between 0-4 (bad), 5-7 (neutral)
+    # and 8-10 (good) for the movie specified in the link. It needs to use Selenium as we need to
+    # select from a dropdown list and trigger some Javascript actions
     @staticmethod
-    def _getMovieReviews(link):
-
-        driver = webdriver.Chrome(ChromeDriverManager().install())
-        driver.get(link)
+    def _getMovieReviews(driver, link):
 
         badReviews = 0
         neutralReviews = 0
         goodReviews = 0
 
+        driver.get(link)
         dropDown = Select(driver.find_element_by_name("ratingFilter"))
 
         for i in list(range(1, 11)):
 
             dropDown.select_by_value(str(i))
 
+            # Once the dropdown is selected, the modified page code gets passed to a BeautifulSoup object
             soup = BeautifulSoup(driver.page_source, "html.parser")
             nReviews = soup.find("div", {"class": "header"}).div.span.getText(strip=True).partition(" ")[0]
 
@@ -198,8 +206,6 @@ class IMDBScraper:
 
             dropDown = Select(driver.find_element_by_name("ratingFilter")) # Needs to be re-selected, Javascript removes it
 
-        driver.quit()
-
         return badReviews, neutralReviews, goodReviews
 
     # This function actually does the scraping job
@@ -209,12 +215,15 @@ class IMDBScraper:
         print("Beginning scraping of IMDB's Top 250 Movies.")
         print("Start time:", self.initTime.strftime("%d %b %Y, %H:%M:%S"))
 
-        r = requests.get(self.url)
-        if r.status_code != 200:
+        headers = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 \
+                                    (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36"}
+        r = requests.get(self.url, headers=headers)
+        if r.status_code != 200: # Check webpage is avaliable
             exit(-1)
 
         soup = BeautifulSoup(r.content, "html.parser")
 
+        # Find all links for films in top 250 webpage and making sure we get that amount
         links = [link.get('href') for link in soup.find_all('a')]
         topShowLinks = ['https://www.imdb.com' + link for link in links
                         if link is not None and link.startswith('/title/tt')]
@@ -222,17 +231,21 @@ class IMDBScraper:
         if len(topShowLinks) != 250:
             exit(-2)
 
-        topShowObjects = [IMDBScraper._getMovieFromLink(link) for link in topShowLinks]
-        self.data = pd.DataFrame.from_records([show.to_dict() for show in topShowObjects])
+        driver = webdriver.Chrome(ChromeDriverManager().install()) # Selenium browser opened here for efficiency, so only 1 is opened and not 250
+        topShowObjects = [IMDBScraper._getMovieFromLink(driver, link) for link in topShowLinks] # Scrape all movie info
+        driver.quit()  # Closing the browser
+        self.data = pd.DataFrame.from_records([show.to_dict() for show in topShowObjects]) # Create dataframe from Movie objects
 
         self.endTime = datetime.now()
         print("Finished scraping of IMDB's Top 250 Movies.")
         print("Finish time:", self.endTime.strftime("%d %b %Y, %H:%M:%S"))
         print("Elapsed time:", self.endTime - self.initTime)
 
-    def writeData(self):
+    # Function to dump data in CSV format to the specified file
+    # (with headers, separator "," and text enclosed in "")
+    def writeData(self, file):
 
         print("Beginning data dump to file data/movies.csv.")
-        self.data.to_csv('data/movies.csv', index=False)
+        self.data.to_csv(file, index=False)
         print("Data dump finished.")
 
