@@ -21,3 +21,7 @@ Finalment, a la carpeta **pdf** s'hi pot trobar el report de la pràctica.
 ## Indicacions per a l'execució
 
 És necessari instal.lar les llibreries selenium i webdriver-manager per a Python. L'execució triga aproximadament 1 hora.
+
+## Publicació del dataset
+
+El dataset també està publicat a Zenodo amb DOI 10.5281/zenodo.4688425. S'hi pot trobar a https://zenodo.org/record/4688425.
