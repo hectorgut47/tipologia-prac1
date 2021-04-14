@@ -225,7 +225,8 @@ class IMDBScraper:
 
         # Find all links for films in top 250 webpage and making sure we get that amount
         links = [link.get('href') for link in soup.find_all('a')]
-        topShowLinks = ['https://www.imdb.com' + link for link in links
+        re.compile("")
+        topShowLinks = ['https://www.imdb.com' + link.split("?")[0] for link in links
                         if link is not None and link.startswith('/title/tt')]
         topShowLinks = list(dict.fromkeys(topShowLinks))  # All links are gotten duplicated, we need to remove them
         if len(topShowLinks) != 250:
